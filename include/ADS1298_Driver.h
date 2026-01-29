@@ -109,9 +109,9 @@ public:
     void readDataFromDRDY_ISR();
     
 private:
-    // Manual CS control
-    void _AssertADS_CS(void);
-    void _DeAssertADS_CS(void);
+    bool is_cs_asserted = false;
+    bool is_start_asserted = false;
+    bool is_reset_asserted = true;
 
     // ESP-IDF SPI handle
     spi_host_device_t _spi_host;

@@ -120,19 +120,14 @@ bool ADS1298_Driver::begin() {
         return false;
     }
     ESP_LOGI(TAG, "FreeRTOS components created successfully.");
-
-    // 4. Hardware Reset
-    ESP_LOGI(TAG, "Performing hardware reset...");
-    ADS1x9x_Reset();
-    ESP_LOGI(TAG, "Hardware reset completed");
     
     // 5. Power-on Initialization and Configuration
-    Serial.println("Starting power-on initialization...");
+    ESP_LOGI(TAG, "Starting power-on initialization...");
     ADS1x9x_PowerOn_Init();
-    Serial.println("Power-on initialization completed");
+    ESP_LOGI(TAG, "Power-on initialization completed");
 
     // // 6. Verify register configuration
-    Serial.println("Verifying register configuration...");
+    ESP_LOGI(TAG, "Verifying register configuration...");
     bool registersVerified = verifyRegisterConfiguration();
     if (!registersVerified) {
         Serial.println("✗ Register verification failed. Device may not be properly configured.");
@@ -167,27 +162,47 @@ bool ADS1298_Driver::begin() {
 
 // --- Pin Control Functions (STM32 HAL to Arduino) ---
 void ADS1298_Driver::AssertADS_CS(void) {
-    gpio_set_level(ADS_CS_PIN, 0);
+    if (!is_cs_asserted) {
+        gpio_set_level(ADS_CS_PIN, 0);
+        vTaskDelay(pdMS_TO_TICKS(1));
+        is_cs_asserted = true;
+    }
 }
 
 void ADS1298_Driver::DeAssertADS_CS(void) {
-    gpio_set_level(ADS_CS_PIN, 1);
+    if (is_cs_asserted) {
+        gpio_set_level(ADS_CS_PIN, 1);
+        vTaskDelay(pdMS_TO_TICKS(1));
+        is_cs_asserted = false;
+    }
 }
 
 void ADS1298_Driver::AssertADS_Start(void) {
-    gpio_set_level(ADS_START_PIN, 1);
+    if (!is_start_asserted) {
+        gpio_set_level(ADS_START_PIN, 1);
+        is_start_asserted = true;
+    }
 }
 
 void ADS1298_Driver::DeAssertADS_Start(void) {
-    gpio_set_level(ADS_START_PIN, 0);
+    if (is_start_asserted) {
+        gpio_set_level(ADS_START_PIN, 0);
+        is_start_asserted = false;
+    }
 }
 
 void ADS1298_Driver::AssertADS_Reset(void) {
-    gpio_set_level(ADS_RST_PIN, 0);
+    if (!is_reset_asserted) {
+        gpio_set_level(ADS_RST_PIN, 0);
+        is_reset_asserted = true;
+    }
 }
 
 void ADS1298_Driver::DeAssertADS_Reset(void) {
-    gpio_set_level(ADS_RST_PIN, 1);
+    if (is_reset_asserted) {
+        gpio_set_level(ADS_RST_PIN, 1);
+        is_reset_asserted = false;
+    }
 }
 
 void ADS1298_Driver::ADS1x9x_Reset(void) {
@@ -203,7 +218,7 @@ void ADS1298_Driver::ADS1x9x_Reset(void) {
 
     ESP_LOGI(TAG, "Deasserting reset (RST HIGH)...");
     DeAssertADS_Reset();
-    vTaskDelay(pdMS_TO_TICKS(4 * ADS_INTERNAL_CLK_PERIOD));
+    vTaskDelay(pdMS_TO_TICKS(18 * ADS_INTERNAL_CLK_PERIOD));
     
     ESP_LOGD(TAG, "RST pin state after reset: %s\n", gpio_get_level(ADS_RST_PIN) ? "HIGH" : "LOW");
     ESP_LOGI(TAG, "Hardware reset sequence completed");
@@ -213,6 +228,8 @@ void ADS1298_Driver::ADS1x9x_Reset(void) {
 
 // --- Low-level Communication Functions ---
 void ADS1298_Driver::sendCommand(uint8_t command) {
+    AssertADS_CS();
+
     esp_err_t ret;
     spi_transaction_t t;
     memset(&t, 0, sizeof(t));
@@ -222,14 +239,13 @@ void ADS1298_Driver::sendCommand(uint8_t command) {
     
     ret = spi_device_transmit(_spi_device, &t);
     assert(ret == ESP_OK);
-    Serial.printf("Command 0x%02X sent\n", command);
+
+    vTaskDelay(pdMS_TO_TICKS(4 * ADS_INTERNAL_CLK_PERIOD));
+    ESP_LOGI(TAG, "Command 0x%02X sent\n", command);
 }
 
 void ADS1298_Driver::ADS1x9x_Reg_Write (uint8_t Read_write_address, uint8_t Data) { 
     AssertADS_CS();
-    // Delay copied from STM32 implementation (HAL_Delay(10))
-    // Using vTaskDelay for RTOS-friendly delay
-    vTaskDelay(pdMS_TO_TICKS(10));
 
     esp_err_t ret;
     spi_transaction_t t;
@@ -401,19 +417,10 @@ void ADS1298_Driver::Wake_Up_ADS1x9x (void) { sendCommand(WAKEUP); }
 void ADS1298_Driver::Put_ADS1x9x_In_Sleep (void) { sendCommand(STANDBY); }
 void ADS1298_Driver::Soft_Reset_ADS1x9x (void) { sendCommand(RESET); }
 void ADS1298_Driver::Soft_Start_ReStart_ADS1x9x (void) { sendCommand(START); }
-// void ADS1298_Driver::Soft_Stop_ADS1x9x (void) { sendCommand(STOP); }
+void ADS1298_Driver::Soft_Stop_ADS1x9x (void) { sendCommand(STOP); }
 void ADS1298_Driver::Start_Read_Data_Continuous (void) { sendCommand(RDATAC); }
 void ADS1298_Driver::Stop_Read_Data_Continuous (void) { sendCommand(SDATAC); }
 void ADS1298_Driver::Read_Data_by_Command (void) { sendCommand(RDATA); }
-
-void ADS1298_Driver::Hard_Start_ReStart_ADS1x9x(void) {
-    ADS1x9x_Enable_Start(); // Set Start pin to High (matching C code logic)
-}
-
-void ADS1298_Driver::Hard_Stop_ADS1x9x (void) {
-    ADS1x9x_Disable_Start(); 
-    delay(14); // Replaces osDelay(14)
-}
 
 void ADS1298_Driver::Soft_Start_ADS1x9x (void) {
     Soft_Start_ReStart_ADS1x9x();
@@ -432,27 +439,21 @@ void ADS1298_Driver::Soft_Stop_ADS1x9x (void) {
 // --- Initialization and Configuration (Matching provided C code) ---
 
 void ADS1298_Driver::ADS1x9x_PowerOn_Init(void) {
-    Serial.println("=== ADS1298 Power-On Initialization ===");
+    ESP_LOGI(TAG, "=== ADS1298 Power-On Initialization ===");
     
     // 1. Reset sequence (partially done in begin(), repeated here as per original)
-    Serial.println("Step 1: Additional reset sequence...");
-    DeAssertADS_Reset();
-    delay(1000);
-    AssertADS_Reset();
-    delay(10);
-    DeAssertADS_Reset();
-    delay(70); 
-    Serial.println("Additional reset sequence completed");
+    ESP_LOGI(TAG, "Step 1: Performing hardware reset sequence...");
+    ADS1x9x_Reset();
+    ESP_LOGI(TAG, "hardware reset sequence completed");
     
     // 2. Stop Continuous Mode for configuration
-    Serial.println("Step 2: Stopping continuous mode for configuration...");
+    ESP_LOGI(TAG, "Step 2: Stopping continuous mode for configuration...");
     Stop_Read_Data_Continuous(); 
-    delay(10);
-    Serial.println("Continuous mode stopped");
+    ESP_LOGI(TAG, "Continuous mode stopped");
 
     // 4. Configuration for Internal Test Signal (First Pass)
-    Serial.println("Step 4: Configuring for internal test signal...");
-    Serial.println("Writing configuration registers...");
+    ESP_LOGI(TAG, "Step 4: Configuring for internal test signal...");
+    ESP_LOGI(TAG, "Writing configuration registers...");
     ADS1x9x_Reg_Write(REG_CONFIG1, 0xA4); // High-Resolution mode, Ext Clock, 2kSPS
     ADS1x9x_Reg_Write(REG_CONFIG2, 0x31); // Internal Test enable, f = 2 Hz
     ADS1x9x_Reg_Write(REG_CONFIG3, 0xCC); // Internal Ref, RLD buffer enabled
