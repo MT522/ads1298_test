@@ -107,6 +107,7 @@ public:
 
     // Data Acquisition (Called by ISR, needs to be public)
     void readDataFromDRDY_ISR();
+    static void readDataFromDRDY_ISR_static(void* arg);
     
 private:
     bool is_cs_asserted = false;
@@ -125,7 +126,6 @@ private:
     static void _dma_read_task_wrapper(void* arg);
     // Member function for the task logic
     void _dma_read_task();
-
 };
 
 #endif // ADS1298_DRIVER_H

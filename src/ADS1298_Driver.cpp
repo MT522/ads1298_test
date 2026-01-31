@@ -15,7 +15,10 @@ void IRAM_ATTR drdy_isr_handler() {
     }
 }
 
-
+TickType_t usToTicks(uint64_t microseconds) {
+    uint64_t ticks = (microseconds * configTICK_RATE_HZ + 500000) / 1000000;
+    return ticks > 0 ? ticks : 1;
+}
 
 
 // --- Class Constructor and Begin ---
@@ -55,6 +58,16 @@ bool ADS1298_Driver::begin() {
     gpio_set_direction(ADS_START_PIN, GPIO_MODE_OUTPUT);
     gpio_set_direction(ADS_DRDY_PIN, GPIO_MODE_INPUT);
     gpio_set_pull_mode(ADS_DRDY_PIN, GPIO_PULLUP_ONLY);
+
+    // Configure DRDY pin for interrupt
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << ADS_DRDY_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,    // Enable pull-up (important!)
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_NEGEDGE       // FALLING edge
+    };
+    gpio_config(&io_conf);
 
     vTaskDelay(pdMS_TO_TICKS(100));
 
@@ -130,30 +143,31 @@ bool ADS1298_Driver::begin() {
     ESP_LOGI(TAG, "Verifying register configuration...");
     bool registersVerified = verifyRegisterConfiguration();
     if (!registersVerified) {
-        Serial.println("✗ Register verification failed. Device may not be properly configured.");
+        ESP_LOGE(TAG, "✗ Register verification failed. Device may not be properly configured.");
         return false;
     }
-    Serial.println("✓ Register verification passed.");
+    ESP_LOGI(TAG, "✓ Register verification passed.");
 
     sendCommand(SDATAC);
-    delay(10);
+
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     // 7. Read ID register to verify communication
-    Serial.println("Reading device ID register...");
+    ESP_LOGI(TAG, "Reading device ID register...");
     uint8_t id = GetADSId();
-    Serial.printf("Device ID read: 0x%02X\n", id);
+    ESP_LOGI(TAG, "Device ID read: 0x%02X\n", id);
     
     if (id == 0x92) { // ADS1298 ID
-        Serial.printf("✓ ADS1298 found (ID: 0x%02X). Driver initialized successfully.\n", id);
+        ESP_LOGI(TAG, "✓ ADS1298 found (ID: 0x%02X). Driver initialized successfully.\n", id);
         return true;
     } else {
-        Serial.printf("✗ ADS1298 not found (ID: 0x%02X). Check wiring and connections.\n", id);
-        Serial.println("Expected ID should be 0x92 for ADS1298");
-        Serial.println("Troubleshooting tips:");
-        Serial.println("1. Check SPI connections (MOSI, MISO, SCLK, CS)");
-        Serial.println("2. Verify power supply (3.3V)");
-        Serial.println("3. Check PWDN pin is HIGH");
-        Serial.println("4. Verify RST pin connection");
+        ESP_LOGE(TAG, "✗ ADS1298 not found (ID: 0x%02X). Check wiring and connections.\n", id);
+        ESP_LOGE(TAG, "Expected ID should be 0x92 for ADS1298");
+        ESP_LOGE(TAG, "Troubleshooting tips:");
+        ESP_LOGE(TAG, "1. Check SPI connections (MOSI, MISO, SCLK, CS)");
+        ESP_LOGE(TAG, "2. Verify power supply (3.3V)");
+        ESP_LOGE(TAG, "3. Check PWDN pin is HIGH");
+        ESP_LOGE(TAG, "4. Verify RST pin connection");
         return false;
     }
 }
@@ -214,11 +228,11 @@ void ADS1298_Driver::ADS1x9x_Reset(void) {
 
     ESP_LOGI(TAG, "Asserting reset (RST LOW)...");
     AssertADS_Reset();
-    vTaskDelay(pdMS_TO_TICKS(4 * ADS_INTERNAL_CLK_PERIOD));
+    esp_rom_delay_us((uint32_t)(4 * ADS_INTERNAL_CLK_PERIOD));
 
     ESP_LOGI(TAG, "Deasserting reset (RST HIGH)...");
     DeAssertADS_Reset();
-    vTaskDelay(pdMS_TO_TICKS(18 * ADS_INTERNAL_CLK_PERIOD));
+    esp_rom_delay_us((uint32_t)(18 * ADS_INTERNAL_CLK_PERIOD));
     
     ESP_LOGD(TAG, "RST pin state after reset: %s\n", gpio_get_level(ADS_RST_PIN) ? "HIGH" : "LOW");
     ESP_LOGI(TAG, "Hardware reset sequence completed");
@@ -240,7 +254,7 @@ void ADS1298_Driver::sendCommand(uint8_t command) {
     ret = spi_device_transmit(_spi_device, &t);
     assert(ret == ESP_OK);
 
-    vTaskDelay(pdMS_TO_TICKS(4 * ADS_INTERNAL_CLK_PERIOD));
+    esp_rom_delay_us((uint32_t)(4 * ADS_INTERNAL_CLK_PERIOD));
     ESP_LOGI(TAG, "Command 0x%02X sent\n", command);
 }
 
@@ -257,8 +271,9 @@ void ADS1298_Driver::ADS1x9x_Reg_Write (uint8_t Read_write_address, uint8_t Data
     t.flags = SPI_TRANS_USE_TXDATA;
     ret = spi_device_transmit(_spi_device, &t);
     assert(ret == ESP_OK);
-    // Short delay mimicking STM32's busy-wait loop
-    delayMicroseconds(5);
+
+    // Short delay for instrction decode in between transmissions
+    esp_rom_delay_us((uint32_t)(4 * ADS_INTERNAL_CLK_PERIOD));
 
     // Byte 2: Number of registers to write - 1
     memset(&t, 0, sizeof(t));
@@ -267,7 +282,9 @@ void ADS1298_Driver::ADS1x9x_Reg_Write (uint8_t Read_write_address, uint8_t Data
     t.flags = SPI_TRANS_USE_TXDATA;
     ret = spi_device_transmit(_spi_device, &t);
     assert(ret == ESP_OK);
-    delayMicroseconds(5);
+
+    // Short delay for instrction decode in between transmissions
+    esp_rom_delay_us((uint32_t)(4 * ADS_INTERNAL_CLK_PERIOD));
 
     // Byte 3: Data
     memset(&t, 0, sizeof(t));
@@ -277,14 +294,14 @@ void ADS1298_Driver::ADS1x9x_Reg_Write (uint8_t Read_write_address, uint8_t Data
     ret = spi_device_transmit(_spi_device, &t);
     assert(ret == ESP_OK);
 
-    DeAssertADS_CS();
+    // Short delay for instrction decode in between transmissions
+    esp_rom_delay_us((uint32_t)(4 * ADS_INTERNAL_CLK_PERIOD));
     
-    Serial.printf("Writing register 0x%02X: 0x%02X\n", Read_write_address, Data);
+    ESP_LOGI(TAG, "Writing register 0x%02X: 0x%02X\n", Read_write_address, Data);
 }
 
 uint8_t ADS1298_Driver::ADS1x9x_Reg_Read(uint8_t Reg_address) {
     AssertADS_CS();
-    vTaskDelay(pdMS_TO_TICKS(1));
 
     spi_transaction_t t;
     esp_err_t ret;
@@ -296,12 +313,10 @@ uint8_t ADS1298_Driver::ADS1x9x_Reg_Read(uint8_t Reg_address) {
     t.flags = SPI_TRANS_USE_TXDATA;
     
     ret = spi_device_polling_transmit(_spi_device, &t);
-    if (ret != ESP_OK) {
-        // ... error handling
-    }
+    assert(ret == ESP_OK);
     
-    // Delay required for ADS129x command decode (1.9 us at 2MHz MCLK)
-    delayMicroseconds(2); 
+    // Short delay for instrction decode in between transmissions
+    esp_rom_delay_us((uint32_t)(4 * ADS_INTERNAL_CLK_PERIOD));
     
     memset(&t, 0, sizeof(t));
     t.length = 1 * 8; // 1 byte (8 bits)
@@ -309,12 +324,10 @@ uint8_t ADS1298_Driver::ADS1x9x_Reg_Read(uint8_t Reg_address) {
     t.flags = SPI_TRANS_USE_TXDATA;
 
     ret = spi_device_polling_transmit(_spi_device, &t);
-    if (ret != ESP_OK) {
-        // ... error handling
-    }
+    assert(ret == ESP_OK);
 
-    // Delay required for ADS129x command decode (1.9 us at 2MHz MCLK)
-    delayMicroseconds(2); 
+    // Short delay for instrction decode in between transmissions
+    esp_rom_delay_us((uint32_t)(4 * ADS_INTERNAL_CLK_PERIOD));
 
     memset(&t, 0, sizeof(t));
     t.length = 1 * 8; // 1 byte (8 bits)
@@ -322,14 +335,13 @@ uint8_t ADS1298_Driver::ADS1x9x_Reg_Read(uint8_t Reg_address) {
     t.flags = SPI_TRANS_USE_TXDATA | SPI_TRANS_USE_RXDATA;
 
     ret = spi_device_polling_transmit(_spi_device, &t);
-    if (ret != ESP_OK) {
-        // ... error handling
-    }
-    uint8_t result = t.rx_data[0]; // The data is in the first (and only) byte received
-    Serial.printf("Reg 0x%02X: Read=0x%02X\n", Reg_address, result);
+    assert(ret == ESP_OK);
 
-    // Delay required for ADS129x command decode (1.9 us at 2MHz MCLK)
-    delayMicroseconds(2);
+    uint8_t result = t.rx_data[0]; // The data is in the first (and only) byte received
+    ESP_LOGI(TAG, "Reg 0x%02X: Read=0x%02X\n", Reg_address, result);
+
+    // Short delay for instrction decode in between transmissions
+    esp_rom_delay_us((uint32_t)(4 * ADS_INTERNAL_CLK_PERIOD));
 
     DeAssertADS_CS();
     return result; 
@@ -340,7 +352,7 @@ uint8_t ADS1298_Driver::GetADSId(void) {
 }
 
 bool ADS1298_Driver::verifyRegisterConfiguration(void) {
-    Serial.println("=== Register Configuration Verification ===");
+    ESP_LOGI(TAG, "=== Register Configuration Verification ===");
     bool allRegistersCorrect = true;
     
     // Define expected register values (based on ADS1x9x_PowerOn_Init configuration)
@@ -370,7 +382,7 @@ bool ADS1298_Driver::verifyRegisterConfiguration(void) {
         uint8_t readValue = ADS1x9x_Reg_Read(expectedRegs[i].address);
         bool isCorrect = (readValue == expectedRegs[i].expectedValue);
         
-        Serial.printf("Reg 0x%02X: Expected=0x%02X, Read=0x%02X %s - %s\n", 
+        ESP_LOGD(TAG, "Reg 0x%02X: Expected=0x%02X, Read=0x%02X %s - %s\n", 
                      expectedRegs[i].address, 
                      expectedRegs[i].expectedValue, 
                      readValue,
@@ -383,12 +395,12 @@ bool ADS1298_Driver::verifyRegisterConfiguration(void) {
     }
     
     // Verify channel settings (all channels should be 0x00 for normal ECG)
-    Serial.println("Verifying channel settings...");
+    ESP_LOGI(TAG, "Verifying channel settings...");
     for (uint8_t i = 0; i < 8; i++) {
         uint8_t readValue = ADS1x9x_Reg_Read(REG_CH1SET + i);
         bool isCorrect = (readValue == 0x00);
         
-        Serial.printf("CH%d (0x%02X): Expected=0x00, Read=0x%02X %s\n", 
+        ESP_LOGD(TAG, "CH%d (0x%02X): Expected=0x00, Read=0x%02X %s\n", 
                      i+1, REG_CH1SET + i, readValue, isCorrect ? "✓" : "✗");
         
         if (!isCorrect) {
@@ -397,17 +409,17 @@ bool ADS1298_Driver::verifyRegisterConfiguration(void) {
     }
     
     if (allRegistersCorrect) {
-        Serial.println("✓ All registers verified successfully!");
+        ESP_LOGI(TAG, "✓ All registers verified successfully!");
     } else {
-        Serial.println("✗ Some registers have incorrect values!");
-        Serial.println("Troubleshooting tips:");
-        Serial.println("1. Check SPI communication");
-        Serial.println("2. Verify power supply stability");
-        Serial.println("3. Check for timing issues");
-        Serial.println("4. Verify register write sequence");
+        ESP_LOGE(TAG, "✗ Some registers have incorrect values!");
+        ESP_LOGE(TAG, "Troubleshooting tips:");
+        ESP_LOGE(TAG, "1. Check SPI communication");
+        ESP_LOGE(TAG, "2. Verify power supply stability");
+        ESP_LOGE(TAG, "3. Check for timing issues");
+        ESP_LOGE(TAG, "4. Verify register write sequence");
     }
     
-    Serial.println("=== Register Verification Complete ===\n\n\n");
+    ESP_LOGI(TAG, "=== Register Verification Complete ===\n\n\n");
     return allRegistersCorrect;
 }
 
@@ -417,23 +429,22 @@ void ADS1298_Driver::Wake_Up_ADS1x9x (void) { sendCommand(WAKEUP); }
 void ADS1298_Driver::Put_ADS1x9x_In_Sleep (void) { sendCommand(STANDBY); }
 void ADS1298_Driver::Soft_Reset_ADS1x9x (void) { sendCommand(RESET); }
 void ADS1298_Driver::Soft_Start_ReStart_ADS1x9x (void) { sendCommand(START); }
-void ADS1298_Driver::Soft_Stop_ADS1x9x (void) { sendCommand(STOP); }
 void ADS1298_Driver::Start_Read_Data_Continuous (void) { sendCommand(RDATAC); }
 void ADS1298_Driver::Stop_Read_Data_Continuous (void) { sendCommand(SDATAC); }
 void ADS1298_Driver::Read_Data_by_Command (void) { sendCommand(RDATA); }
 
 void ADS1298_Driver::Soft_Start_ADS1x9x (void) {
     Soft_Start_ReStart_ADS1x9x();
-    // Replaces Enable_ADS1x9x_DRDY_Interrupt() by attaching the ISR
-    attachInterrupt(digitalPinToInterrupt(ADS_DRDY_PIN), drdy_isr_handler, FALLING); 
-    // Serial.println("Start ECG sampling."); // Replace SendDebugMessage
+
+    gpio_isr_handler_add(ADS_DRDY_PIN, readDataFromDRDY_ISR_static, (void*)this);
+    ESP_LOGI(TAG, "Start ECG sampling.");
 }
 
 void ADS1298_Driver::Soft_Stop_ADS1x9x (void) {
     sendCommand(STOP);
-    // Replaces Disable_ADS1x9x_DRDY_Interrupt() by detaching the ISR
-    detachInterrupt(digitalPinToInterrupt(ADS_DRDY_PIN)); 
-    // Serial.println("Stop ECG sampling."); // Replace SendDebugMessage
+
+    gpio_isr_handler_remove(ADS_DRDY_PIN);
+    ESP_LOGI(TAG, "Stop ECG sampling.");
 }
 
 // --- Initialization and Configuration (Matching provided C code) ---
@@ -464,52 +475,66 @@ void ADS1298_Driver::ADS1x9x_PowerOn_Init(void) {
     ADS1x9x_Reg_Write(REG_WCT2, 0xD0); 
     
     // Lead-off Detection (Test Pass)
-    Serial.println("Configuring lead-off detection...");
+    ESP_LOGI(TAG, "Configuring lead-off detection...");
     ADS1x9x_Reg_Write(REG_LOFF, 0x07); 
     ADS1x9x_Reg_Write(REG_CONFIG4, 0x02); // Lo-off Enabled, Continuous mode
     ADS1x9x_Reg_Write(REG_LOFF_SENSP, 0xFF); 
     ADS1x9x_Reg_Write(REG_LOFF_SENSN, 0xFF); 
     
     // Set All Channels to Internal Test Signal 
-    Serial.println("Setting all channels to internal test signal...");
+    ESP_LOGI(TAG, "Setting all channels to internal test signal...");
     for(uint8_t i = 0; i < 8; i++) {
         ADS1x9x_Reg_Write(REG_CH1SET + i, 0x35); // PGA = 3, Internal Test Signal
     }
-    Serial.println("Channel configuration completed");
+    ESP_LOGI(TAG, "Channel configuration completed");
     
     // 5. Start Conversion (Test Pass)
-    Serial.println("Step 5: Starting test conversion...");
+    ESP_LOGI(TAG, "Step 5: Starting test conversion...");
     Soft_Start_ReStart_ADS1x9x();
-    delay(10);
+    
     Start_Read_Data_Continuous(); 
-    delay(500);
-    Serial.println("Test conversion completed");
+    
+    vTaskDelay(pdMS_TO_TICKS(500));
+    ESP_LOGI(TAG, "Test conversion completed");
     
     // 6. Stop and Reconfigure for Normal ECG
-    Serial.println("Step 6: Reconfiguring for normal ECG...");
+    ESP_LOGI(TAG, "Step 6: Reconfiguring for normal ECG...");
     Stop_Read_Data_Continuous(); 
-    delay(10);
+
     Soft_Stop_ADS1x9x();
-    delay(10);
     
     // Lead-off Detection (Normal ECG Pass)
-    Serial.println("Configuring lead-off detection for normal ECG...");
+    ESP_LOGI(TAG, "Configuring lead-off detection for normal ECG...");
     ADS1x9x_Reg_Write(REG_LOFF, 0xA3); 
     ADS1x9x_Reg_Write(REG_CONFIG4, 0x02); 
     ADS1x9x_Reg_Write(REG_LOFF_SENSP, 0xFF); 
     ADS1x9x_Reg_Write(REG_LOFF_SENSN, 0xFF); 
     
     // Channel Setting (Normal ECG)
-    Serial.println("Setting channels for normal ECG...");
+    ESP_LOGI(TAG, "Setting channels for normal ECG...");
     for(uint8_t i = 0; i < 8; i++) {
         ADS1x9x_Reg_Write(REG_CH1SET + i, 0x00); // PGA = 6, Normal electrode input 
     }
-    Serial.println("Normal ECG channel configuration completed");
+    ESP_LOGI(TAG, "Normal ECG channel configuration completed");
     
-    Serial.println("=== ADS1298 Power-On Initialization Complete ===\n\n\n");
+    ESP_LOGI(TAG, "=== ADS1298 Power-On Initialization Complete ===\n\n\n");
 }
 
 // --- Data Acquisition Task and ISR ---
+void IRAM_ATTR ADS1298_Driver::readDataFromDRDY_ISR_static(void* arg) {
+    // Call the member function
+    static_cast<ADS1298_Driver*>(arg)->readDataFromDRDY_ISR();
+}
+
+void IRAM_ATTR ADS1298_Driver::readDataFromDRDY_ISR() {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xSemaphoreGiveFromISR(_drdy_semaphore, &xHigherPriorityTaskWoken);
+    
+    // If giving the semaphore woke a higher priority task, request a context switch.
+    if (xHigherPriorityTaskWoken) {
+        portYIELD_FROM_ISR();
+    }
+}
 
 void ADS1298_Driver::_dma_read_task_wrapper(void* arg) {
     // Call the member function
@@ -525,7 +550,7 @@ void ADS1298_Driver::_dma_read_task() {
     spi_trans.length = RAW_ECG_SAMPLE_SIZE * 8; // Length in bits
     // spi_trans.tx_buffer is NULL because we only want to receive
     
-    Serial.println("DMA read task started and waiting for DRDY.");
+    ESP_LOGI(TAG, "DMA read task started and waiting for DRDY.");
 
     for (;;) {
         // Wait for the DRDY interrupt to give the semaphore
@@ -537,7 +562,7 @@ void ADS1298_Driver::_dma_read_task() {
             // Queue the transaction
             ret = spi_device_queue_trans(_spi_device, &spi_trans, portMAX_DELAY);
             if (ret != ESP_OK) {
-                Serial.printf("Failed to queue SPI transaction. Error: %s\n", esp_err_to_name(ret));
+                ESP_LOGE(TAG, "Failed to queue SPI transaction. Error: %s\n", esp_err_to_name(ret));
                 continue;
             }
             
@@ -545,7 +570,7 @@ void ADS1298_Driver::_dma_read_task() {
             spi_transaction_t* rtrans;
             ret = spi_device_get_trans_result(_spi_device, &rtrans, portMAX_DELAY);
             if (ret != ESP_OK) {
-                 Serial.printf("Failed to get transaction result. Error: %s\n", esp_err_to_name(ret));
+                 ESP_LOGE(TAG, "Failed to get transaction result. Error: %s\n", esp_err_to_name(ret));
                  continue;
             }
 
@@ -568,15 +593,5 @@ void ADS1298_Driver::_dma_read_task() {
                 }
             }
         }
-    }
-}
-
-void IRAM_ATTR ADS1298_Driver::readDataFromDRDY_ISR() {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xSemaphoreGiveFromISR(_drdy_semaphore, &xHigherPriorityTaskWoken);
-    
-    // If giving the semaphore woke a higher priority task, request a context switch.
-    if (xHigherPriorityTaskWoken) {
-        portYIELD_FROM_ISR();
     }
 }
