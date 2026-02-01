@@ -7,6 +7,7 @@
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 
 // --- Pin Definitions (Customize for your ESP32 board) ---
 // Note: Using ESP-IDF driver, so we need to define all SPI pins.
@@ -69,6 +70,7 @@
 class ADS1298_Driver {
 public:
     ADS1298_Driver(spi_host_device_t spi_host = VSPI_HOST);
+    ~ADS1298_Driver();
     bool begin();
 
     // Raw data buffer and indexing (Public for ISR access)
@@ -76,6 +78,9 @@ public:
     volatile uint16_t RawECGBufferWriteSampleNum;
     volatile uint32_t RawECGBufferWriteIndex;
     volatile uint8_t IsStartedSampling;
+
+    uint8_t *command_tx_buffer;
+    uint8_t *command_rx_buffer;
     
     // Low-level SPI commands
     void sendCommand(uint8_t command);
@@ -104,6 +109,7 @@ public:
     uint8_t GetADSId(void);
     void ADS1x9x_PowerOn_Init(void);
     bool verifyRegisterConfiguration(void);
+    void readDefaultRegistersAfterReset(void);
 
     // Data Acquisition (Called by ISR, needs to be public)
     void readDataFromDRDY_ISR();
