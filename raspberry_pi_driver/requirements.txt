@@ -1,0 +1,10 @@
+# ADS1298 Raspberry Pi driver
+# Install: pip install -r requirements.txt
+# RPi.GPIO and spidev are usually preinstalled on Raspbian.
+
+RPi.GPIO>=0.7.0
+spidev>=3.5
+
+# Optional: for test_ads1298.py --plot
+numpy>=1.19.0
+matplotlib>=3.3.0
