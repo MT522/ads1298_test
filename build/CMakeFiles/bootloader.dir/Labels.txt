@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+D:/Mehrshad_Projects/ESP_IDF/workspace/ads129x_driver/build/CMakeFiles/bootloader
+D:/Mehrshad_Projects/ESP_IDF/workspace/ads129x_driver/build/CMakeFiles/bootloader.rule
+D:/Mehrshad_Projects/ESP_IDF/workspace/ads129x_driver/build/CMakeFiles/bootloader-complete.rule
+D:/Mehrshad_Projects/ESP_IDF/workspace/ads129x_driver/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+D:/Mehrshad_Projects/ESP_IDF/workspace/ads129x_driver/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+D:/Mehrshad_Projects/ESP_IDF/workspace/ads129x_driver/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+D:/Mehrshad_Projects/ESP_IDF/workspace/ads129x_driver/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+D:/Mehrshad_Projects/ESP_IDF/workspace/ads129x_driver/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+D:/Mehrshad_Projects/ESP_IDF/workspace/ads129x_driver/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+D:/Mehrshad_Projects/ESP_IDF/workspace/ads129x_driver/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule

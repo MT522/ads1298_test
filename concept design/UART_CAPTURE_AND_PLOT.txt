@@ -1,0 +1,60 @@
+================================================================================
+  Why you see garbled output (™€ï¿½0â†"â™¥0ï¿½...) and how to fix it
+================================================================================
+
+1. CAUSE
+   - The ESP32 sends two types of data on UART at 115200 baud:
+     a) Log messages (text): "Command 0x08 sent", "Start ECG sampling.", etc.
+     b) Raw binary data: 27-byte packets (3 status + 8×3 channel bytes), no line breaks.
+   - If you view the stream in a serial monitor that:
+     - Uses a different baud rate than 115200, or
+     - Interprets everything as UTF-8 text,
+   then the binary bytes are decoded as characters and you get mojibake like
+   "™€ï¿½0â†"â™¥0ï¿½â—„3â–¬ï¿½" and "Failed to decode multiple lines in a row".
+
+2. YOU CANNOT DECODE THE GARBLED PASTE
+   - The text you pasted is corrupted: the original bytes were reinterpreted
+     by the terminal. The original binary cannot be recovered from that paste.
+   - You must capture the raw bytes from the serial port at the correct baud rate.
+
+3. HOW TO CAPTURE RAW BINARY FOR PLOTTING
+   - Set your serial tool to 115200 baud (match UART_BAUD_RATE in uart.h).
+   - Capture to a file as RAW BINARY (not "save as text").
+   - Options:
+     A) Python + pyserial (example below)
+     B) idf.py monitor then redirect (captures mixed text+binary; use script to strip)
+     C) Any serial logger that can save binary (e.g. RealTerm, Tera Term with binary log)
+
+   Example: capture 10 seconds of data to capture.bin (Python 3)
+     import serial
+     ser = serial.Serial('COM3', 115200)  # adjust port
+     with open('capture.bin', 'wb') as f:
+         for _ in range(100):  # or time-based loop
+             data = ser.read(ser.in_waiting or 1024)
+             if data: f.write(data)
+     ser.close()
+
+   Or use the provided capture script (see below).
+
+4. DECODE AND PLOT
+   - Run:  python decode_ads1298_binary.py capture.bin
+   - This reads the raw binary file, splits it into 27-byte packets, decodes
+     channels (VREF=2.4 V, 24-bit two's complement), and plots 8 channels.
+   - Optional:  python decode_ads1298_binary.py capture.bin -o samples.txt --uv
+     to also save decoded voltages and plot in µV.
+
+5. BAUD RATE AND MENUCONFIG
+   - The warning "Try checking the baud rate and XTAL frequency setting in menuconfig"
+     is from the ESP-IDF monitor when it sees bytes it can't decode as text.
+   - For viewing LOG MESSAGES only: set monitor to 115200 baud (default).
+   - For capturing DATA: capture raw binary at 115200; do not rely on the monitor
+     to display binary as text.
+
+================================================================================
+  Summary
+================================================================================
+  - Garbled output = wrong baud rate or binary data shown as text.
+  - Capture raw UART at 115200 to a .bin file, then run:
+      python decode_ads1298_binary.py capture.bin
+  - The old plot_ads1298_samples.py expects hex-byte lines (samples.txt format);
+    use decode_ads1298_binary.py for raw binary from the ESP32.
