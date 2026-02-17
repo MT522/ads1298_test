@@ -174,10 +174,10 @@ class ADS1298Driver:
             self._spi_transfer([0x00])
             time.sleep(WAIT_AFTER_SPI_US)
 
-            rx = self._spi_transfer([0xFF])
+            rx = self._spi_transfer([0x00])
             time.sleep(WAIT_AFTER_SPI_US)
 
-        return rx[0]
+            return rx[0]
 
     def _hardware_reset(self) -> None:
         import RPi.GPIO as GPIO

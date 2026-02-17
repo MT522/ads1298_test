@@ -60,6 +60,34 @@ sudo python3 test_ads1298.py --continuous --plot
 
 Or: `make test`, `make test-continuous`, `make test-plot`
 
+## Checking if SPI is working
+
+1. **SPI enabled and device present**
+   ```bash
+   ls -l /dev/spidev0.0
+   ```
+   If missing: `sudo raspi-config` → Interface Options → SPI → Enable → reboot.
+
+2. **Quick ADS1298 check (recommended)**  
+   This uses the driver to read the Device ID and run register read-back verification. If both pass, SPI and wiring to the ADS1298 are working.
+   ```bash
+   sudo python3 check_spi.py --ads1298
+   ```
+   You should see "Device ID: 0x92", then "Reg 0xNN (...): wrote 0xVV, read 0xVV OK" for each config register, and "Verification: N OK, 0 mismatch(es)."
+
+3. **Loopback test (no ADS1298)**  
+   Verifies the Pi’s SPI port and wiring only. **Short GPIO 10 (MOSI) to GPIO 9 (MISO)** with a jumper, then:
+   ```bash
+   sudo python3 check_spi.py --loopback
+   ```
+   Remove the jumper before connecting the ADS1298 again.
+
+4. **Full test**
+   ```bash
+   sudo python3 test_ads1298.py
+   ```
+   If `begin()` passes but you get "No samples received", focus on DRDY and START wiring and timing.
+
 ## Using the driver in your code
 
 ```python
