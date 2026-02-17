@@ -258,20 +258,43 @@ class ADS1298Driver:
             return False
 
         # Power-on style config (internal test signal for testing)
-        self._reg_write(REG_CONFIG1, 0xA4)   # HR, 2kSPS
-        self._reg_write(REG_CONFIG2, 0x31)   # Internal test 2 Hz
-        self._reg_write(REG_CONFIG3, 0xCC)
-        self._reg_write(REG_RLD_SENSP, 0xFF)
-        self._reg_write(REG_RLD_SENSN, 0xFF)
-        self._reg_write(REG_PACE, 0x01)
-        self._reg_write(REG_WCT1, 0x09)
-        self._reg_write(REG_WCT2, 0xD0)
-        self._reg_write(REG_LOFF, 0x07)
-        self._reg_write(REG_CONFIG4, 0x02)
-        self._reg_write(REG_LOFF_SENSP, 0xFF)
-        self._reg_write(REG_LOFF_SENSN, 0xFF)
+        config_regs = [
+            (REG_CONFIG1, 0xA4, "CONFIG1 (HR, 2kSPS)"),
+            (REG_CONFIG2, 0x31, "CONFIG2 (internal test 2 Hz)"),
+            (REG_CONFIG3, 0xCC, "CONFIG3"),
+            (REG_RLD_SENSP, 0xFF, "RLD_SENSP"),
+            (REG_RLD_SENSN, 0xFF, "RLD_SENSN"),
+            (REG_PACE, 0x01, "PACE"),
+            (REG_WCT1, 0x09, "WCT1"),
+            (REG_WCT2, 0xD0, "WCT2"),
+            (REG_LOFF, 0x07, "LOFF"),
+            (REG_CONFIG4, 0x02, "CONFIG4"),
+            (REG_LOFF_SENSP, 0xFF, "LOFF_SENSP"),
+            (REG_LOFF_SENSN, 0xFF, "LOFF_SENSN"),
+        ]
+        for addr, val, _ in config_regs:
+            self._reg_write(addr, val)
         for i in range(8):
-            self._reg_write(REG_CH1SET + i, 0x35)  # Internal test signal
+            self._reg_write(REG_CH1SET + i, 0x35)
+        ch_regs = [(REG_CH1SET + i, 0x35, f"CH{i+1}SET") for i in range(8)]
+        all_regs = config_regs + ch_regs
+
+        # Register read-back verification
+        self._log("Register verification (write then read-back):")
+        ok = 0
+        fail = 0
+        for addr, expected, desc in all_regs:
+            read_val = self._reg_read(addr)
+            match = read_val == expected
+            if match:
+                ok += 1
+                self._log(f"  Reg 0x{addr:02X} ({desc}): wrote 0x{expected:02X}, read 0x{read_val:02X} OK")
+            else:
+                fail += 1
+                self._log(f"  Reg 0x{addr:02X} ({desc}): wrote 0x{expected:02X}, read 0x{read_val:02X} MISMATCH")
+        self._log(f"Verification: {ok} OK, {fail} mismatch(es).")
+        if fail > 0:
+            self._log("Check SPI wiring (MOSI/MISO/SCLK/CS) and that ADS1298 is powered.")
 
         self._log("ADS1298 init done.")
         return True
