@@ -146,6 +146,7 @@ class ADS1298Driver:
         self._assert_cs()
         try:
             rx = self._spi.xfer2(tx)
+            time.sleep(WAIT_AFTER_SPI_US)
             return list(rx) if rx else []
         finally:
             self._deassert_cs()
@@ -156,28 +157,34 @@ class ADS1298Driver:
 
     def _reg_write(self, addr: int, data: int) -> None:
         with self._lock:
-            self._spi_transfer([addr | WREG])
-            time.sleep(WAIT_AFTER_SPI_US)
+            self._assert_cs()
 
-            self._spi_transfer([0x00])
-            time.sleep(WAIT_AFTER_SPI_US)
+            try:
+                self._spi.xfer2([addr | WREG])
+                time.sleep(WAIT_AFTER_SPI_US)
 
-            self._spi_transfer([data])
-            time.sleep(WAIT_AFTER_SPI_US)
-        self._log(f"Write reg 0x{addr:02X} = 0x{data:02X}")
+                self._spi.xfer2([0x00, data])
+                time.sleep(WAIT_AFTER_SPI_US)
+
+                self._log(f"\033[35mWrite reg 0x{addr:02X} = 0x{data:02X}\033[37m")
+            finally:
+                self._deassert_cs()
 
     def _reg_read(self, addr: int) -> int:
         with self._lock:
-            self._spi_transfer([addr | RREG])
-            time.sleep(WAIT_AFTER_SPI_US)
+            self._assert_cs()
 
-            self._spi_transfer([0x00])
-            time.sleep(WAIT_AFTER_SPI_US)
+            try:
+                self._spi.xfer2([addr | RREG])
+                time.sleep(WAIT_AFTER_SPI_US)
 
-            rx = self._spi_transfer([0x00])
-            time.sleep(WAIT_AFTER_SPI_US)
+                rx = self._spi.xfer2([0x00, 0x00])
+                time.sleep(WAIT_AFTER_SPI_US)
 
-            return rx[0]
+                self._log(f"\033[35mRead reg 0x{addr:0X} = 0x{rx[1]:02X}\033[37m")
+                return rx[1]
+            finally:
+                self._deassert_cs()
 
     def _hardware_reset(self) -> None:
         import RPi.GPIO as GPIO
@@ -291,10 +298,10 @@ class ADS1298Driver:
             match = read_val == expected
             if match:
                 ok += 1
-                self._log(f"  Reg 0x{addr:02X} ({desc}): wrote 0x{expected:02X}, read 0x{read_val:02X} OK")
+                self._log(f" \033[32m Reg 0x{addr:02X} ({desc}): wrote 0x{expected:02X}, read 0x{read_val:02X} OK\033[37m")
             else:
                 fail += 1
-                self._log(f"  Reg 0x{addr:02X} ({desc}): wrote 0x{expected:02X}, read 0x{read_val:02X} MISMATCH")
+                self._log(f"  \033[33mReg 0x{addr:02X} ({desc}): wrote 0x{expected:02X}, read 0x{read_val:02X} MISMATCH\033[37m")
         self._log(f"Verification: {ok} OK, {fail} mismatch(es).")
         if fail > 0:
             self._log("Check SPI wiring (MOSI/MISO/SCLK/CS) and that ADS1298 is powered.")
