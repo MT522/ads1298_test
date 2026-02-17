@@ -156,14 +156,29 @@ class ADS1298Driver:
 
     def _reg_write(self, addr: int, data: int) -> None:
         with self._lock:
-            self._spi_transfer([addr | WREG, 0x00, data])
+            self._spi_transfer([addr | WREG])
+            time.sleep(WAIT_AFTER_SPI_US)
+
+            self._spi_transfer([0x00])
+            time.sleep(WAIT_AFTER_SPI_US)
+
+            self._spi_transfer([data])
+            time.sleep(WAIT_AFTER_SPI_US)
         self._log(f"Write reg 0x{addr:02X} = 0x{data:02X}")
 
     def _reg_read(self, addr: int) -> int:
         with self._lock:
-            rx = self._spi_transfer([addr | RREG, 0x00, 0xFF])
-        if len(rx) >= 3:
-            return rx[2]  # register value is 3rd byte
+            self._spi_transfer([addr | RREG])
+            time.sleep(WAIT_AFTER_SPI_US)
+
+            self._spi_transfer([0x00])
+            time.sleep(WAIT_AFTER_SPI_US)
+
+            rx = self._spi_transfer([0xFF])
+            time.sleep(WAIT_AFTER_SPI_US)
+
+        if len(rx) >= 1:
+            return rx[0]
         return 0
 
     def _hardware_reset(self) -> None:
