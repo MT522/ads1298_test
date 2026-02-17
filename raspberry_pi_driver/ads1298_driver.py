@@ -234,7 +234,7 @@ class ADS1298Driver:
         GPIO.setwarnings(False)
         for pin in (self.cs_pin, self.start_pin, self.rst_pin):
             GPIO.setup(pin, GPIO.OUT)
-        GPIO.setup(self.drdy_pin, GPIO.IN, pull_up_down=GPIO.PULL_UP)
+        GPIO.setup(self.drdy_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         self._gpio_ready = True
 
         GPIO.output(self.cs_pin, GPIO.HIGH)
