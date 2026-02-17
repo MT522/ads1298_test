@@ -2,7 +2,15 @@
 
 SPI + GPIO driver for the Texas Instruments ADS1298 8-channel ADC. Uses **spidev** for SPI and **RPi.GPIO** for CS, START, RST, and DRDY (interrupt-driven data ready).
 
-## Hardware wiring (Raspberry Pi 4 — BCM GPIO)
+## Hardware wiring (Raspberry Pi 4 — BCM GPIO numbering)
+
+All GPIO numbers below are **BCM GPIO numbers** (the “BCM” column on `pinput.xyz`), not physical header pin numbers.
+
+Notes about SPI chip-select pins:
+- **BCM 8 = CE0**
+- **BCM 7 = CE1**
+
+To avoid conflicts, this wiring does **not** use CE0/CE1 for ADS1298 control pins.
 
 | ADS1298 pin | Raspberry Pi   | Notes           |
 |-------------|----------------|-----------------|
@@ -10,7 +18,7 @@ SPI + GPIO driver for the Texas Instruments ADS1298 8-channel ADC. Uses **spidev
 | DOUT        | GPIO 9 (MISO)  | SPI0 MISO       |
 | SCLK        | GPIO 11 (SCLK) | SPI0 SCLK       |
 | CS          | GPIO 5         | Manual chip select |
-| START       | GPIO 7         | Start conversion |
+| START       | GPIO 17        | Start conversion |
 | RST         | GPIO 25        | Reset (active low) |
 | DRDY        | GPIO 24        | Data ready (falling edge) |
 | GND         | GND            |                 |
@@ -60,7 +68,7 @@ from ads1298_driver import ADS1298Driver, packet_to_voltages
 driver = ADS1298Driver(
     cs_pin=5,
     drdy_pin=24,
-    start_pin=7,
+    start_pin=17,
     rst_pin=25,
     verbose=True,
 )

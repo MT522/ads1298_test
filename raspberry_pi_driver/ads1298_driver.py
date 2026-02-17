@@ -63,7 +63,7 @@ LSB_V = VREF_V / POSITIVE_FS_CODE
 # SPI0: MOSI=10, MISO=9, SCLK=11 (fixed). We use GPIO for CS (not CE0).
 DEFAULT_CS_PIN = 5
 DEFAULT_DRDY_PIN = 24
-DEFAULT_START_PIN = 7
+DEFAULT_START_PIN = 17
 DEFAULT_RST_PIN = 25
 DEFAULT_SPI_BUS = 0
 DEFAULT_SPI_DEVICE = 0
@@ -177,9 +177,7 @@ class ADS1298Driver:
             rx = self._spi_transfer([0xFF])
             time.sleep(WAIT_AFTER_SPI_US)
 
-        if len(rx) >= 1:
-            return rx[0]
-        return 0
+        return rx[0]
 
     def _hardware_reset(self) -> None:
         import RPi.GPIO as GPIO
