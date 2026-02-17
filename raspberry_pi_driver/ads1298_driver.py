@@ -239,11 +239,14 @@ class ADS1298Driver:
         GPIO.output(self.start_pin, GPIO.LOW)
         GPIO.output(self.rst_pin, GPIO.HIGH)
 
+        # SPI settings matching ADS1298 reference (concept design/main.c): 8-bit, CPOL=0, CPHA=1, MSB first
         self._spi = spidev.SpiDev()
         self._spi.open(self.spi_bus, self.spi_device)
         self._spi.max_speed_hz = self.spi_speed_hz
-        self._spi.mode = 1  # CPOL=0, CPHA=1
-        self._log("SPI opened (mode 1, 4 MHz)")
+        self._spi.mode = 1           # CPOL=0 (SPI_POLARITY_LOW), CPHA=1 (SPI_PHASE_2EDGE)
+        self._spi.bits_per_word = 8  # SPI_DATASIZE_8BIT
+        self._spi.lsbfirst = False   # SPI_FIRSTBIT_MSB
+        self._log(f"SPI opened: 8-bit, mode 1 (CPOL=0 CPHA=1), MSB first, {self.spi_speed_hz // 1_000_000} MHz")
 
         self._hardware_reset()
         time.sleep(0.01)
