@@ -313,8 +313,8 @@ class ADS1298Driver:
         """Start conversions and install DRDY callback to fill sample queue."""
         import RPi.GPIO as GPIO
         self._stop_event.clear()
-        self._send_command(RDATAC)
         self._send_command(START)
+        self._send_command(RDATAC)
         GPIO.output(self.start_pin, GPIO.HIGH)
         time.sleep(0.01)
         try:
@@ -324,10 +324,11 @@ class ADS1298Driver:
                 callback=self._drdy_callback,
                 bouncetime=1,
             )
+            self._log("Start ECG sampling interrupt mode.")
         except Exception:
             self._drdy_thread = threading.Thread(target=self._drdy_poll_thread, daemon=True)
             self._drdy_thread.start()
-        self._log("Start ECG sampling.")
+            self._log("Start ECG sampling polling mode.")
 
     def stop_sampling(self) -> None:
         """Stop conversions and remove DRDY callback."""
