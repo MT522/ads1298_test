@@ -1,0 +1,31 @@
+/*
+ * Device Tree overlay for Texas Instruments ADS1298 on Raspberry Pi SPI0.
+ * BCM GPIOs: CS=5, DRDY=24, START=17, RST=25.
+ * SPI0: MOSI=10, MISO=9, SCLK=11.
+ */
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835";
+
+	fragment@0 {
+		target = <&spi0>;
+		__overlay__ {
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			ads1298: ads1298@0 {
+				compatible = "ti,ads1298";
+				reg = <0>;
+				spi-max-frequency = <4000000>;
+				spi-cpha;
+				cs-gpios = <&gpio 5 0>;
+				drdy-gpios = <&gpio 24 0>;
+				start-gpios = <&gpio 17 0>;
+				reset-gpios = <&gpio 25 0>;
+			};
+		};
+	};
+};
