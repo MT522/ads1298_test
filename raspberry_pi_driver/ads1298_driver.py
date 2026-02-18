@@ -181,7 +181,7 @@ class ADS1298Driver:
                 rx = self._spi.xfer2([0x00, 0x00])
                 time.sleep(WAIT_AFTER_SPI_US)
 
-                self._log(f"\033[35mRead reg 0x{addr:0X} = 0x{rx[1]:02X}\033[37m")
+                self._log(f"\033[35mRead reg 0x{addr:02X} = 0x{rx[1]:02X}\033[37m")
                 return rx[1]
             finally:
                 self._deassert_cs()
@@ -205,19 +205,26 @@ class ADS1298Driver:
         self._assert_cs()
         try:
             rx = self._spi.xfer2([0xFF] * PACKET_SIZE)
+            self._log(f"\033[35mReceived packet, first header byte: 0x{rx[0]:02X}\033[37m")
         except Exception:
-            self._deassert_cs()
             return
-        self._deassert_cs()
+        finally:
+            self._deassert_cs()
+            time.sleep(WAIT_AFTER_SPI_US)
+
         if len(rx) != PACKET_SIZE:
+            self._log(f"\033[31mReceived packet with length {len(rx)} != {PACKET_SIZE}\033[37m")
             return
         packet = bytes(rx)
         if (packet[0] & 0xF0) != VALID_STATUS_NIBBLE:
+            self._log(f"\033[31mReceived packet with invalid status nibble: 0x{packet[0]:02X}\033[37m")
             return
         try:
             self._sample_queue.put_nowait(packet)
         except queue.Full:
+            self._log(f"\033[31mSample queue is full, dropping packet\033[37m")
             pass
+        self._log(f"\033[32mQueued packet with {len(packet)} bytes\033[37m")
 
     def _drdy_poll_thread(self) -> None:
         """Poll DRDY in a loop (fallback if edge detection is flaky)."""
